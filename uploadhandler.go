@@ -185,10 +185,12 @@ func (self *UploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			fileChunkId := gf.Id()
 			gf.Close()
 			upload.put(flowChunkNumber, fileChunkId)
-			blobId, finished := upload.finishedWriting()
-			if finished {
-				self.finished(w, r, blobId)
-			}
+      go func() {
+        blobId, finished := upload.finishedWriting()
+        if finished {
+          self.finished(w, r, blobId)
+        }
+      }()
 		}
 	}
 }
