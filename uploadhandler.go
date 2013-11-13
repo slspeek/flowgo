@@ -113,13 +113,15 @@ func (self *UploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	flowChunkNumber, err := strconv.Atoi(r.FormValue("flowChunkNumber"))
 	if err != nil {
 		http.Error(w, "Invalid flowChunkNumber", http.StatusBadRequest)
+    return
 	}
-	flowChunkCount, err := strconv.Atoi(r.FormValue("flowTotalChunks"))
+  log.Println("flowChunkNumber: ", flowChunkNumber)
+	flowTotalChunks, err := strconv.Atoi(r.FormValue("flowTotalChunks"))
 	if err != nil {
 		http.Error(w, "Invalid flowTotalChunks", http.StatusBadRequest)
+    return
 	}
-
-	upload := self.uploads.get(flowIdentifier, flowFilename, flowChunkCount)
+	upload := self.uploads.get(flowIdentifier, flowFilename, flowTotalChunks)
 	if r.Method == "GET" {
 		if _, found := upload.get(flowChunkNumber); found {
 			return
@@ -138,7 +140,7 @@ func (self *UploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}()
 			f, _, err := r.FormFile("file")
 			if err != nil {
-				log.Println(err)
+				log.Println("Error in finding the chunk data", err)
 				http.Error(w, "not a form", http.StatusBadRequest)
 			}
 			defer r.Body.Close()
