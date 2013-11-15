@@ -10,16 +10,43 @@ import (
 	"sync"
 )
 
+type flow struct {
+	identifier  string
+	filename    string
+	totalChunks int
+	chunkSize   int
+}
+
+func readFlow(r *http.Request) (f flow, chunkNumber int, err error) {
+	identifier := r.FormValue("flowIdentifier")
+	filename := r.FormValue("flowFilename")
+	chunkNumber, err = strconv.Atoi(r.FormValue("flowChunkNumber"))
+	if err != nil {
+		return
+	}
+	totalChunks, err := strconv.Atoi(r.FormValue("flowTotalChunks"))
+	if err != nil {
+		return
+	}
+	chunkSize, err := strconv.Atoi(r.FormValue("flowChunkSize"))
+	if err != nil {
+		return
+	}
+	f = flow{identifier, filename, totalChunks, chunkSize}
+	return
+}
+
 type upload struct {
 	mutex      *sync.Mutex
 	chunks     map[int]string
 	filename   string
 	chunkCount int
 	once       *sync.Once
+	finished   chan bool
 }
 
 func newUpload(fn string, chunkCount int) upload {
-	return upload{new(sync.Mutex), make(map[int]string), fn, chunkCount, new(sync.Once)}
+	return upload{new(sync.Mutex), make(map[int]string), fn, chunkCount, new(sync.Once), make(chan bool)}
 }
 
 func (self *upload) put(chunkId int, blobId string) {
@@ -108,28 +135,21 @@ func NewUploadHandler(bs *goblob.BlobService, uploadCompleted func(*http.Request
 }
 
 func (self *UploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	flowIdentifier := r.FormValue("flowIdentifier")
-	flowFilename := r.FormValue("flowFilename")
-	flowChunkNumber, err := strconv.Atoi(r.FormValue("flowChunkNumber"))
+	flow, chunkNumber, err := readFlow(r)
 	if err != nil {
-		http.Error(w, "Invalid flowChunkNumber", http.StatusBadRequest)
-    return
+		http.Error(w, "Missing parameters in request", http.StatusBadRequest)
+		return
 	}
-  log.Println("flowChunkNumber: ", flowChunkNumber)
-	flowTotalChunks, err := strconv.Atoi(r.FormValue("flowTotalChunks"))
-	if err != nil {
-		http.Error(w, "Invalid flowTotalChunks", http.StatusBadRequest)
-    return
-	}
-	upload := self.uploads.get(flowIdentifier, flowFilename, flowTotalChunks)
+	upload := self.uploads.get(flow.identifier, flow.filename, flow.totalChunks)
+
 	if r.Method == "GET" {
-		if _, found := upload.get(flowChunkNumber); found {
+		if _, found := upload.get(chunkNumber); found {
 			return
 		} else {
 			http.Error(w, "not found", http.StatusNotFound)
 		}
 	} else if r.Method == "POST" {
-		if _, found := upload.get(flowChunkNumber); found {
+		if _, found := upload.get(chunkNumber); found {
 			return
 		} else {
 			defer func() {
@@ -142,38 +162,36 @@ func (self *UploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				log.Println("Error in finding the chunk data", err)
 				http.Error(w, "not a form", http.StatusBadRequest)
+				return
 			}
 			defer r.Body.Close()
 
-			chunkName := fmt.Sprintf("%v.chunk.%v", flowFilename, flowChunkNumber)
+			chunkName := fmt.Sprintf("%v.chunk.%v", flow.filename, chunkNumber)
 			gf, err := self.bs.Create(chunkName)
 			if err != nil {
 				http.Error(w, "unable to open Mongo file", http.StatusTeapot)
+				return
 			}
 			_, err = io.Copy(gf, f)
 			if err != nil {
 				http.Error(w, "unable to copy uploaded data to Mongo file", http.StatusTeapot)
-
+				return
 			}
 			fileChunkId := gf.Id()
 			gf.Close()
-			upload.put(flowChunkNumber, fileChunkId)
+			upload.put(chunkNumber, fileChunkId)
 			if upload.hasAllChunks() {
 				upload.once.Do(func() {
 					go func() {
-						defer func() {
-							err := recover()
-							if err != nil {
-                log.Println("Recoverd from: ", err)
-							}
-						}()
-						log.Println("Starting concat for ", flowIdentifier)
+						log.Println("Starting concat for ", flow.identifier)
 						fileId, err := upload.concatFile(self.bs)
 						if err != nil {
-							panic("Error during concat of flow file")
+							log.Println("Error during concat of: ", flow.identifier, " ", err)
+							return
 						}
-						self.uploads.remove(flowIdentifier)
+						self.uploads.remove(flow.identifier)
 						self.finished(r, fileId)
+						upload.finished <- true
 					}()
 				})
 			}
