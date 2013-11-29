@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"github.com/slspeek/goblob"
 	"io"
+	"labix.org/v2/mgo"
 	"math"
 	"math/rand"
 	"mime/multipart"
@@ -27,7 +28,11 @@ func check(t *testing.T, err error) {
 }
 
 func blobService() (bs *goblob.BlobService) {
-	bs, _ = goblob.NewBlobService("localhost", "test", "testfs")
+	s, err := mgo.Dial("localhost")
+	if err != nil {
+		panic(err)
+	}
+	bs = goblob.NewBlobService(s, "test", "testfs")
 	return
 }
 

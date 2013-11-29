@@ -37,10 +37,10 @@ func readFlow(r *http.Request) (f flow, chunkNumber int, err error) {
 }
 
 type upload struct {
-	mutex      *sync.Mutex
-	chunks     map[int]string
-  flow       flow
-	once       *sync.Once
+	mutex  *sync.Mutex
+	chunks map[int]string
+	flow   flow
+	once   *sync.Once
 }
 
 func newUpload(flow flow) upload {
