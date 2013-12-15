@@ -19,7 +19,7 @@ import (
 const cid = 42
 const hex = "ABCD"
 
-var f = flow{"flow_id", "test.txt", 2, 1024}
+var f = Flow{"flow_id", "test.txt", 2, 1024}
 
 func check(t *testing.T, err error) {
 	if err != nil {
@@ -40,15 +40,15 @@ func uploadHandler(f func(*http.Request, string)) *UploadHandler {
 	return NewUploadHandler(blobService(), f)
 }
 
-func makeRequest(url string, body io.Reader, f flow, chunkNumber int) *http.Request {
+func makeRequest(url string, body io.Reader, f Flow, chunkNumber int) *http.Request {
 	buf := new(bytes.Buffer)
 	writer := multipart.NewWriter(buf)
-	writer.WriteField("flowChunkSize", fmt.Sprintf("%v", f.chunkSize))
+	writer.WriteField("flowChunkSize", fmt.Sprintf("%v", f.ChunkSize))
 	writer.WriteField("flowChunkNumber", fmt.Sprintf("%v", chunkNumber))
-	writer.WriteField("flowTotalChunks", fmt.Sprintf("%v", f.totalChunks))
-	writer.WriteField("flowIdentifier", f.identifier)
-	writer.WriteField("flowFilename", f.filename)
-	fileWriter, _ := writer.CreateFormFile("file", f.filename)
+	writer.WriteField("flowTotalChunkss", fmt.Sprintf("%v", f.TotalChunks))
+	writer.WriteField("flowIdentifier", f.Identifier)
+	writer.WriteField("flowFilename", f.Filename)
+	fileWriter, _ := writer.CreateFormFile("file", f.Filename)
 	io.Copy(fileWriter, body)
 	writer.Close()
 	req, _ := http.NewRequest("POST", url, buf)
@@ -81,10 +81,10 @@ func testBytes(n int) (buf *bytes.Buffer, md5sum string) {
 	return
 }
 
-func prepareRequests(url string, fn string, fs int64, chunkSize int64) (f flow, reqs []*http.Request, md5sum string) {
+func PrepareRequests(url string, fn string, fs int64, chunkSize int64) (f Flow, reqs []*http.Request, md5sum string) {
 	identifier := fmt.Sprintf("%d-%s", fs, fn)
 	totalChunks := int(math.Ceil(float64(fs) / float64(chunkSize)))
-	f = flow{identifier, fn, totalChunks, chunkSize}
+	f = Flow{identifier, fn, totalChunks, chunkSize}
 	reqs = make([]*http.Request, totalChunks)
 	data, md5sum := testBytes(100*1024 - 2)
 	buf := new(bytes.Buffer)
@@ -105,7 +105,7 @@ func TestWithTestServerMulti(t *testing.T) {
 		finished <- true
 
 	})
-	f := flow{"10-testparts", "random-10-part", 10, 10 * 1024}
+	f := Flow{"10-testparts", "random-10-part", 10, 10 * 1024}
 	ts := httptest.NewServer(ulh)
 	defer ts.Close()
 	r := new(bytes.Buffer)
@@ -147,9 +147,9 @@ func BenchmarkSequentialUpload(b *testing.B) {
 	b.StartTimer()
 	for n := 0; n < b.N; n++ {
 		b.StopTimer()
-		fl, requests, md5sum := prepareRequests(ts.URL, "foo.data", 100*1024-4, 1024)
+		fl, requests, md5sum := PrepareRequests(ts.URL, "foo.data", 100*1024-4, 1024)
 		b.StartTimer()
-		for i := 0; i < fl.totalChunks; i++ {
+		for i := 0; i < fl.TotalChunks; i++ {
 			resp, err := http.DefaultClient.Do(requests[i])
 			if err != nil {
 				b.Fatal("DefaultClient recieves error: ", err)

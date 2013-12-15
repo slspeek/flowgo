@@ -10,21 +10,21 @@ import (
 	"sync"
 )
 
-type flow struct {
-	identifier  string
-	filename    string
-	totalChunks int
-	chunkSize   int64
+type Flow struct {
+	Identifier string
+	Filename   string
+	TotalChunks int
+	ChunkSize  int64
 }
 
-func readFlow(r *http.Request) (f flow, chunkNumber int, err error) {
+func readFlow(r *http.Request) (f Flow, chunkNumber int, err error) {
 	identifier := r.FormValue("flowIdentifier")
 	filename := r.FormValue("flowFilename")
 	chunkNumber, err = strconv.Atoi(r.FormValue("flowChunkNumber"))
 	if err != nil {
 		return
 	}
-	totalChunks, err := strconv.Atoi(r.FormValue("flowTotalChunks"))
+	totalChunks, err := strconv.Atoi(r.FormValue("flowTotalChunkss"))
 	if err != nil {
 		return
 	}
@@ -32,18 +32,18 @@ func readFlow(r *http.Request) (f flow, chunkNumber int, err error) {
 	if err != nil {
 		return
 	}
-	f = flow{identifier, filename, totalChunks, int64(chunkSize)}
+	f = Flow{identifier, filename, totalChunks, int64(chunkSize)}
 	return
 }
 
 type upload struct {
 	mutex  *sync.Mutex
 	chunks map[int]string
-	flow   flow
+	flow   Flow
 	once   *sync.Once
 }
 
-func newUpload(flow flow) upload {
+func newUpload(flow Flow) upload {
 	return upload{new(sync.Mutex), make(map[int]string), flow, new(sync.Once)}
 }
 
@@ -69,12 +69,12 @@ func (self *upload) getChunk(chunkId int, bs *goblob.BlobService) *goblob.File {
 }
 
 func (self *upload) concatFile(bs *goblob.BlobService) (string, error) {
-	file, err := bs.Create(self.flow.filename)
+	file, err := bs.Create(self.flow.Filename)
 	if err != nil {
 		return "", err
 	}
 	defer file.Close()
-	for i := 1; i <= self.flow.totalChunks; i++ {
+	for i := 1; i <= self.flow.TotalChunks; i++ {
 		chunk := self.getChunk(i, bs)
 		_, err = io.Copy(file, chunk)
 		if err != nil {
@@ -87,7 +87,7 @@ func (self *upload) concatFile(bs *goblob.BlobService) (string, error) {
 }
 
 func (self *upload) hasAllChunks() bool {
-	for i := 1; i <= self.flow.totalChunks; i++ {
+	for i := 1; i <= self.flow.TotalChunks; i++ {
 		if _, found := self.get(i); !found {
 			return false
 		}
@@ -104,12 +104,12 @@ func newUploadMap() uploadMap {
 	return uploadMap{new(sync.Mutex), make(map[string]upload)}
 }
 
-func (self *uploadMap) get(f flow) upload {
+func (self *uploadMap) get(f Flow) upload {
 	self.mutex.Lock()
-	upload, existed := self.uploads[f.identifier]
+	upload, existed := self.uploads[f.Identifier]
 	if !existed {
 		upload = newUpload(f)
-		self.uploads[f.identifier] = upload
+		self.uploads[f.Identifier] = upload
 	}
 	self.mutex.Unlock()
 	return upload
@@ -164,7 +164,7 @@ func (self *UploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			defer r.Body.Close()
 
-			chunkName := fmt.Sprintf("%v.chunk.%v", flow.filename, chunkNumber)
+			chunkName := fmt.Sprintf("%v.chunk.%v", flow.Filename, chunkNumber)
 			gf, err := self.bs.Create(chunkName)
 			if err != nil {
 				http.Error(w, "unable to open Mongo file", http.StatusTeapot)
@@ -183,10 +183,10 @@ func (self *UploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 					go func() {
 						fileId, err := upload.concatFile(self.bs)
 						if err != nil {
-							log.Println("Error during concat of: ", flow.identifier, " ", err)
+							log.Println("Error during concat of: ", flow.Identifier, " ", err)
 							return
 						}
-						self.uploads.remove(flow.identifier)
+						self.uploads.remove(flow.Identifier)
 						self.finished(r, fileId)
 					}()
 				})
