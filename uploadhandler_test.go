@@ -45,7 +45,7 @@ func makeRequest(url string, body io.Reader, f Flow, chunkNumber int) *http.Requ
 	writer := multipart.NewWriter(buf)
 	writer.WriteField("flowChunkSize", fmt.Sprintf("%v", f.ChunkSize))
 	writer.WriteField("flowChunkNumber", fmt.Sprintf("%v", chunkNumber))
-	writer.WriteField("flowTotalChunkss", fmt.Sprintf("%v", f.TotalChunks))
+	writer.WriteField("flowTotalChunks", fmt.Sprintf("%v", f.TotalChunks))
 	writer.WriteField("flowIdentifier", f.Identifier)
 	writer.WriteField("flowFilename", f.Filename)
 	fileWriter, _ := writer.CreateFormFile("file", f.Filename)

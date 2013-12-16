@@ -24,7 +24,7 @@ func readFlow(r *http.Request) (f Flow, chunkNumber int, err error) {
 	if err != nil {
 		return
 	}
-	totalChunks, err := strconv.Atoi(r.FormValue("flowTotalChunkss"))
+	totalChunks, err := strconv.Atoi(r.FormValue("flowTotalChunks"))
 	if err != nil {
 		return
 	}
