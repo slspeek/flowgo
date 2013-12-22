@@ -9,7 +9,6 @@ import (
 	"labix.org/v2/mgo"
 	"math"
 	"math/rand"
-	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -38,22 +37,6 @@ func blobService() (bs *goblob.BlobService) {
 
 func uploadHandler(f func(*http.Request, string)) *UploadHandler {
 	return NewUploadHandler(blobService(), f)
-}
-
-func makeRequest(url string, body io.Reader, f Flow, chunkNumber int) *http.Request {
-	buf := new(bytes.Buffer)
-	writer := multipart.NewWriter(buf)
-	writer.WriteField("flowChunkSize", fmt.Sprintf("%v", f.ChunkSize))
-	writer.WriteField("flowChunkNumber", fmt.Sprintf("%v", chunkNumber))
-	writer.WriteField("flowTotalChunks", fmt.Sprintf("%v", f.TotalChunks))
-	writer.WriteField("flowIdentifier", f.Identifier)
-	writer.WriteField("flowFilename", f.Filename)
-	fileWriter, _ := writer.CreateFormFile("file", f.Filename)
-	io.Copy(fileWriter, body)
-	writer.Close()
-	req, _ := http.NewRequest("POST", url, buf)
-	req.Header.Add("Content-Type", writer.FormDataContentType())
-	return req
 }
 
 func TestPutChunk(t *testing.T) {
@@ -158,6 +141,73 @@ func BenchmarkSequentialUpload(b *testing.B) {
 				b.Fatal("StatusCode should be 200")
 			}
 		}
+		<-finished
+		b.StopTimer()
+		file, err := bs.Open(fid)
+		if err != nil {
+			b.Fatal("Open file went south: ", err)
+		}
+		if file.MD5() != md5sum {
+			b.Fatal("Checksum of uploaded file mismatched")
+		}
+		bs.Remove(fid)
+		b.StartTimer()
+	}
+}
+func TestWithTestServerMultiClient(t *testing.T) {
+	reader, md5sum := testBytes(100*1024 - 2)
+	fid := ""
+	finished := make(chan bool)
+	ulh := uploadHandler(func(r *http.Request, id string) {
+		fid = id
+		finished <- true
+
+	})
+	ts := httptest.NewServer(ulh)
+	defer ts.Close()
+
+	client := NewClient(ts.URL)
+
+  client.Opts.ChunkSize = 1024
+	client.Upload("foo.data", bytes.NewReader(reader.Bytes()))
+	bs := blobService()
+	defer bs.Close()
+	<-finished
+	file, err := bs.Open(fid)
+	if err != nil {
+		t.Fatal("Open file went south: ", err)
+	}
+	if file.MD5() != md5sum {
+		t.Fatal("Checksum of uploaded file mismatched")
+	}
+	err = bs.Remove(fid)
+	check(t, err)
+}
+
+func BenchmarkSequentialUploadClient(b *testing.B) {
+	b.StopTimer()
+	bs := blobService()
+	defer bs.Close()
+	fid := ""
+	finished := make(chan bool)
+	ulh := uploadHandler(func(r *http.Request, id string) {
+		fid = id
+		finished <- true
+	})
+	ts := httptest.NewServer(ulh)
+	defer ts.Close()
+	b.StartTimer()
+	for n := 0; n < b.N; n++ {
+		b.StopTimer()
+		input, md5sum := testBytes(100*1024 - 4)
+
+		client := NewClient(ts.URL)
+    client.Opts.ChunkSize = 1024
+    b.StartTimer()
+
+		client.Upload("foo.data", bytes.NewReader(input.Bytes()))
+
+		b.StartTimer()
 		<-finished
 		b.StopTimer()
 		file, err := bs.Open(fid)
