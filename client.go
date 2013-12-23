@@ -33,7 +33,7 @@ func NewClient(target string) *Client {
 		Target:             target,
 		MaxChunkRetries:    0,
 		ChunkRetryInterval: 3000,
-		PermanentErrors:    []int{404, 500},
+		PermanentErrors:    []int{401, 404, 500},
 	}
 	client.Opts = opts
 	return client
@@ -79,6 +79,9 @@ func (c *Client) Upload(fn string, input io.ReadSeeker) (err error) {
 		buf := new(bytes.Buffer)
 		io.CopyN(buf, input, c.Opts.ChunkSize)
 		r := makeRequest(c.Opts.Target, buf, f, i)
+    for key, value := range(c.Opts.Headers) {
+      r.Header.Add(key, value)
+    }
 		var resp *http.Response
 		resp, err = http.DefaultClient.Do(r)
 		if err != nil {
@@ -86,7 +89,7 @@ func (c *Client) Upload(fn string, input io.ReadSeeker) (err error) {
 		}
 		for _, code := range c.Opts.PermanentErrors {
 			if resp.StatusCode == code {
-        return errors.New("Permanent error occured: " + string(code))
+        return errors.New(fmt.Sprintf("Permanent error occured: %d",code))
 			}
 		}
 	}
