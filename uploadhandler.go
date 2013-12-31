@@ -81,9 +81,9 @@ func (self *upload) concatFile(bs *goblob.BlobService) (string, error) {
 			return "", err
 		}
 		chunk.Close()
-		bs.Remove(chunk.Id())
+		bs.Remove(chunk.StringId())
 	}
-	return file.Id(), nil
+	return file.StringId(), nil
 }
 
 func (self *upload) hasAllChunks() bool {
@@ -175,7 +175,7 @@ func (self *UploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "unable to copy uploaded data to Mongo file", http.StatusTeapot)
 				return
 			}
-			fileChunkId := gf.Id()
+			fileChunkId := gf.StringId()
 			gf.Close()
 			upload.put(chunkNumber, fileChunkId)
 			if upload.hasAllChunks() {
