@@ -93,6 +93,7 @@ func TestWithTestServerMulti(t *testing.T) {
 	defer ts.Close()
 	r := new(bytes.Buffer)
 	for i := 1; i <= 10; i++ {
+    t.Log("Befire request: ", i)
 		io.CopyN(r, reader, 1024*1024)
 		req := makeRequest(ts.URL, r, f, i)
 		resp, _ := http.DefaultClient.Do(req)
@@ -100,6 +101,7 @@ func TestWithTestServerMulti(t *testing.T) {
 		if resp.StatusCode != 200 {
 			t.Fatal("StatusCode should be 200")
 		}
+    t.Log("After request: ", i)
 	}
 	bs := blobService()
 	defer bs.Close()
