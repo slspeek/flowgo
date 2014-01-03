@@ -111,7 +111,7 @@ type writeOut struct {
 
 func startWrite(u *upload, bs *goblob.BlobService) (w *writeOut) {
 	w = new(writeOut)
-	w.tickle = make(chan string)
+	w.tickle = make(chan string, u.flow.TotalChunks)
 	w.result = make(chan bool)
 	w.bs = bs
 	w.upload = u
@@ -160,7 +160,9 @@ func (w *writeOut) waitForParts() {
 		case <-w.tickle:
 			if w.writeOut() {
 				log.Println("WriteOut finished")
+        log.Println("About to signal the result");
 				w.result <- true
+        log.Println("Not reached!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
 				return
 			}
 		default:
@@ -247,7 +249,7 @@ func (self *UploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			_, err = io.Copy(gf, f)
 			if err != nil {
-				http.Error(w, "unable to copy uploaded data to Mongo file", http.StatusTeapot)
+			http.Error(w, "unable to copy uploaded data to Mongo file", http.StatusTeapot)
 				return
 			}
 			fileChunkId := gf.StringId()
@@ -283,12 +285,15 @@ func (self *UploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
           //time.Sleep(1 * time.Millisecond)
 				//}
 			//}
-			log.Println("afyer tickle", chunkNumber)
+      log.Println("after tickle: ", chunkNumber, " of ", upload.flow.TotalChunks)
 			if upload.hasAllChunks() {
 				log.Println("Waiting for the result...")
 				<-upload.writeOut.result
+        log.Println("Not reached!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
 				self.uploads.remove(flow.Identifier)
+        log.Println("After remove upload");
 				self.finished(r, upload.writeOut.outBlobId)
+        log.Println("After finished function");
 			} else {
 				log.Println("Not yet all parts ", chunkNumber)
 			}

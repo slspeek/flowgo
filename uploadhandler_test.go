@@ -7,6 +7,7 @@ import (
 	"github.com/slspeek/goblob"
 	"io"
 	"labix.org/v2/mgo"
+	"log"
 	"math"
 	"math/rand"
 	"net/http"
@@ -82,7 +83,7 @@ func PrepareRequests(url string, fn string, fs int64, chunkSize int64) (f Flow, 
 func TestWithTestServerMulti(t *testing.T) {
 	reader, md5sum := testBytes(100*1024 - 2)
 	fid := ""
-	finished := make(chan bool)
+	finished := make(chan bool, 1)
 	ulh := uploadHandler(func(r *http.Request, id string) {
 		fid = id
 		finished <- true
@@ -93,7 +94,7 @@ func TestWithTestServerMulti(t *testing.T) {
 	defer ts.Close()
 	r := new(bytes.Buffer)
 	for i := 1; i <= 10; i++ {
-    t.Log("Befire request: ", i)
+    log.Println("***************Befire request: ", i)
 		io.CopyN(r, reader, 1024*1024)
 		req := makeRequest(ts.URL, r, f, i)
 		resp, _ := http.DefaultClient.Do(req)
@@ -101,11 +102,13 @@ func TestWithTestServerMulti(t *testing.T) {
 		if resp.StatusCode != 200 {
 			t.Fatal("StatusCode should be 200")
 		}
-    t.Log("After request: ", i)
+    log.Println("***************After request: ", i)
 	}
 	bs := blobService()
 	defer bs.Close()
+  log.Println("Waiting to finish")
 	<-finished
+  log.Println("finished!")
 	file, err := bs.Open(fid)
 	if err != nil {
 		t.Fatal("Open file went south: ", err)
@@ -122,7 +125,7 @@ func BenchmarkSequentialUpload(b *testing.B) {
 	bs := blobService()
 	defer bs.Close()
 	fid := ""
-	finished := make(chan bool)
+	finished := make(chan bool, 1)
 	ulh := uploadHandler(func(r *http.Request, id string) {
 		fid = id
 		finished <- true
@@ -159,7 +162,7 @@ func BenchmarkSequentialUpload(b *testing.B) {
 func TestWithTestServerMultiClient(t *testing.T) {
 	reader, md5sum := testBytes(100*1024 - 2)
 	fid := ""
-	finished := make(chan bool)
+	finished := make(chan bool, 1)
 	ulh := uploadHandler(func(r *http.Request, id string) {
 		fid = id
 		finished <- true
@@ -191,7 +194,7 @@ func BenchmarkSequentialUploadClient(b *testing.B) {
 	bs := blobService()
 	defer bs.Close()
 	fid := ""
-	finished := make(chan bool)
+	finished := make(chan bool, 1)
 	ulh := uploadHandler(func(r *http.Request, id string) {
 		fid = id
 		finished <- true
