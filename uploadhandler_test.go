@@ -94,7 +94,6 @@ func TestWithTestServerMulti(t *testing.T) {
 	defer ts.Close()
 	r := new(bytes.Buffer)
 	for i := 1; i <= 10; i++ {
-    log.Println("***************Befire request: ", i)
 		io.CopyN(r, reader, 1024*1024)
 		req := makeRequest(ts.URL, r, f, i)
 		resp, _ := http.DefaultClient.Do(req)
@@ -102,13 +101,49 @@ func TestWithTestServerMulti(t *testing.T) {
 		if resp.StatusCode != 200 {
 			t.Fatal("StatusCode should be 200")
 		}
-    log.Println("***************After request: ", i)
 	}
 	bs := blobService()
 	defer bs.Close()
-  log.Println("Waiting to finish")
+	log.Println("Waiting to finish")
 	<-finished
-  log.Println("finished!")
+	log.Println("finished!")
+	file, err := bs.Open(fid)
+	if err != nil {
+		t.Fatal("Open file went south: ", err)
+	}
+	if file.MD5() != md5sum {
+		t.Fatal("Checksum of uploaded file mismatched")
+	}
+	err = bs.Remove(fid)
+	check(t, err)
+}
+func TestWithTestServerMultiReverseOrder(t *testing.T) {
+	reader, md5sum := testBytes(100*1024 - 2)
+	fid := ""
+	finished := make(chan bool, 1)
+	ulh := uploadHandler(func(r *http.Request, id string) {
+		fid = id
+		finished <- true
+
+	})
+	f := Flow{"10-testparts", "random-10-part", 10, 10 * 1024}
+	ts := httptest.NewServer(ulh)
+	defer ts.Close()
+	r := new(bytes.Buffer)
+	for i := 10; i >= 1; i-- {
+		io.CopyN(r, reader, 1024*1024)
+		req := makeRequest(ts.URL, r, f, i)
+		resp, _ := http.DefaultClient.Do(req)
+		io.Copy(os.Stderr, resp.Body)
+		if resp.StatusCode != 200 {
+			t.Fatal("StatusCode should be 200")
+		}
+	}
+	bs := blobService()
+	defer bs.Close()
+	log.Println("Waiting to finish")
+	<-finished
+	log.Println("finished!")
 	file, err := bs.Open(fid)
 	if err != nil {
 		t.Fatal("Open file went south: ", err)
@@ -159,6 +194,7 @@ func BenchmarkSequentialUpload(b *testing.B) {
 		b.StartTimer()
 	}
 }
+
 func TestWithTestServerMultiClient(t *testing.T) {
 	reader, md5sum := testBytes(100*1024 - 2)
 	fid := ""
@@ -173,7 +209,7 @@ func TestWithTestServerMultiClient(t *testing.T) {
 
 	client := NewClient(ts.URL)
 
-  client.Opts.ChunkSize = 1024
+	client.Opts.ChunkSize = 1024
 	client.Upload("foo.data", bytes.NewReader(reader.Bytes()))
 	bs := blobService()
 	defer bs.Close()
@@ -207,8 +243,8 @@ func BenchmarkSequentialUploadClient(b *testing.B) {
 		input, md5sum := testBytes(100*1024 - 4)
 
 		client := NewClient(ts.URL)
-    client.Opts.ChunkSize = 1024
-    b.StartTimer()
+		client.Opts.ChunkSize = 1024
+		b.StartTimer()
 
 		client.Upload("foo.data", bytes.NewReader(input.Bytes()))
 

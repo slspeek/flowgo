@@ -46,7 +46,6 @@ type upload struct {
 }
 
 func newUpload(flow Flow) *upload {
-  log.Println("Call to NEW UPLAOD");
 	return &upload{mutex: new(sync.Mutex), chunks: make(map[int]string), flow: flow, once: new(sync.Once)}
 }
 
@@ -69,24 +68,6 @@ func (self *upload) getChunk(chunkId int, bs *goblob.BlobService) *goblob.File {
 	self.mutex.Unlock()
 	chunk, _ := bs.Open(id)
 	return chunk
-}
-
-func (self *upload) concatFile(bs *goblob.BlobService) (string, error) {
-	file, err := bs.Create(self.flow.Filename)
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-	for i := 1; i <= self.flow.TotalChunks; i++ {
-		chunk := self.getChunk(i, bs)
-		_, err = io.Copy(file, chunk)
-		if err != nil {
-			return "", err
-		}
-		chunk.Close()
-		bs.Remove(chunk.StringId())
-	}
-	return file.StringId(), nil
 }
 
 func (self *upload) hasAllChunks() bool {
@@ -122,7 +103,6 @@ func startWrite(u *upload, bs *goblob.BlobService) (w *writeOut) {
 	}
 	w.fileHandle = file
 	w.outBlobId = file.StringId()
-	log.Println("returning form startWrite")
 	return
 }
 
@@ -137,16 +117,13 @@ func (w *writeOut) writeOut() (finished bool) {
 			}
 			chunk.Close()
 			w.bs.Remove(chunk.StringId())
-			log.Println("Wrote part: ", w.upload.flow.Filename, i)
 		} else {
 			break
 		}
 	}
-	log.Println("After loop we have counter at: ", i)
 	if i >= w.upload.flow.TotalChunks {
 		finished = true
 		w.err = w.fileHandle.Close()
-		log.Println("After close file")
 	} else {
 		w.lastWritten = i - 1
 	}
@@ -154,19 +131,14 @@ func (w *writeOut) writeOut() (finished bool) {
 }
 
 func (w *writeOut) waitForParts() {
-  log.Println("WaitForParts started")
 	for {
 		select {
 		case <-w.tickle:
 			if w.writeOut() {
-				log.Println("WriteOut finished")
-        log.Println("About to signal the result");
 				w.result <- true
-        log.Println("Not reached!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
 				return
 			}
 		default:
-      log.Println("Waiting for more parts")
 			time.Sleep(1 * time.Millisecond)
 		}
 	}
@@ -249,53 +221,24 @@ func (self *UploadHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 			_, err = io.Copy(gf, f)
 			if err != nil {
-			http.Error(w, "unable to copy uploaded data to Mongo file", http.StatusTeapot)
+				http.Error(w, "unable to copy uploaded data to Mongo file", http.StatusTeapot)
 				return
 			}
 			fileChunkId := gf.StringId()
 			gf.Close()
 			upload.put(chunkNumber, fileChunkId)
 
-      upload.once.Do(func() {
-        upload.writeOut = startWrite(upload, self.bs)
-        log.Println("Creating err: ", upload.writeOut.err)
-        go upload.writeOut.waitForParts()
-        log.Println("In once after", chunkNumber)
-      })
+			upload.once.Do(func() {
+				upload.writeOut = startWrite(upload, self.bs)
+				go upload.writeOut.waitForParts()
+			})
 
-      //if chunkNumber == 1 {
-				//upload.writeOut = startWrite(upload, self.bs)
-        //log.Println("Creating err: ", upload.writeOut.err)
-				//go upload.writeOut.waitForParts()
-      //}
-      log.Printf("Before tickle NO: %d WRITEOUT: %#v", chunkNumber, upload.writeOut)
-			//var timeout = time.After(100 * time.Millisecond)
+			upload.writeOut.tickle <- "We have more parts"
 
-				upload.writeOut.tickle <- "We have more parts"
-
-		//outer:
-			//for {
-				//select {
-				//case upload.writeOut.tickle <- "We have more parts":
-					//break outer
-				//case <-timeout:
-					//log.Println("##########Timed out")
-					//break outer
-				//default:
-          //time.Sleep(1 * time.Millisecond)
-				//}
-			//}
-      log.Println("after tickle: ", chunkNumber, " of ", upload.flow.TotalChunks)
 			if upload.hasAllChunks() {
-				log.Println("Waiting for the result...")
 				<-upload.writeOut.result
-        log.Println("Not reached!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
 				self.uploads.remove(flow.Identifier)
-        log.Println("After remove upload");
 				self.finished(r, upload.writeOut.outBlobId)
-        log.Println("After finished function");
-			} else {
-				log.Println("Not yet all parts ", chunkNumber)
 			}
 		}
 	}
